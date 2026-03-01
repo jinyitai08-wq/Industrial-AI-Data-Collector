@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, LineChart, Line, Legend } from "recharts";
-import { Zap, Battery, Activity, RefreshCw, MapPin, Factory, Wifi, Download, FileText, Sparkles, X, AlertTriangle, ServerCrash } from "lucide-react";
+import { Zap, Battery, Activity, RefreshCw, MapPin, Factory, Wifi, Download, FileText, Sparkles, X, TrendingUp, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
-import { toJpeg } from "html-to-image";
+import html2canvas from "html2canvas";
 import ReactMarkdown from "react-markdown";
 import { GoogleGenAI, Type } from "@google/genai";
+import { motion, AnimatePresence } from "motion/react";
 
 interface AIChartData {
   title: string;
@@ -93,8 +94,6 @@ export default function Overview() {
   const [timeRange, setTimeRange] = useState<string>('24h');
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AIAnalysisResponse | null>(null);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
   const dashboardRef = useRef<HTMLDivElement>(null);
 
   const fetchData = async () => {
@@ -107,10 +106,10 @@ export default function Overview() {
       
       // Check if responses are OK and are JSON
       const checkResponse = async (res: Response) => {
-        if (!res.ok) throw new Error(`伺服器回應錯誤: ${res.status}`);
+        if (!res.ok) throw new Error(`API Error: ${res.status}`);
         const contentType = res.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
-          throw new Error("伺服器回傳了非 JSON 格式的資料");
+          throw new Error("API returned non-JSON response");
         }
         return res.json();
       };
@@ -118,10 +117,8 @@ export default function Overview() {
       setKpi(await checkResponse(kpiRes));
       setTelemetry(await checkResponse(telRes));
       setPowerCurve(await checkResponse(curveRes));
-      setConnectionError(null);
     } catch (err) {
       console.error("Failed to fetch data:", err);
-      setConnectionError(err instanceof Error ? err.message : "無法連線至伺服器 (連線中斷)");
     } finally {
       setLoading(false);
     }
@@ -213,10 +210,9 @@ export default function Overview() {
     if (!dashboardRef.current) return;
     setAnalyzing(true);
     setAnalysisResult(null);
-    setAiError(null);
     try {
-      const dataUrl = await toJpeg(dashboardRef.current, { quality: 0.8, pixelRatio: 1.5 });
-      const base64Image = dataUrl.split(",")[1];
+      const canvas = await html2canvas(dashboardRef.current, { scale: 1.5 });
+      const base64Image = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
       
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
@@ -288,11 +284,11 @@ export default function Overview() {
           setAnalysisResult({ markdownReport: response.text, hasChart: false });
         }
       } else {
-        setAiError("無法產生分析結果，AI 回應為空。");
+        setAnalysisResult({ markdownReport: "無法產生分析結果。", hasChart: false });
       }
     } catch (err) {
       console.error("AI Analysis failed:", err);
-      setAiError(err instanceof Error ? err.message : "AI 分析過程中發生未知錯誤，請稍後再試。");
+      setAnalysisResult({ markdownReport: "AI 分析過程中發生錯誤，請稍後再試。", hasChart: false });
     } finally {
       setAnalyzing(false);
     }
@@ -315,43 +311,52 @@ export default function Overview() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-8 max-w-7xl mx-auto space-y-8">
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2"
+      >
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">電站總覽</h1>
-          <p className="text-gray-500">即時監控您的太陽能發電廠狀態與效能。</p>
+          <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight mb-2 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 via-gray-700 to-gray-900">
+            電站總覽
+          </h1>
+          <div className="flex items-center text-gray-500 font-medium">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full mr-2 animate-pulse"></div>
+            即時監控您的太陽能發電廠狀態與效能
+          </div>
         </div>
-        <div className="flex space-x-3">
+        <div className="flex flex-wrap gap-3">
           <button
             onClick={() => {
               document.getElementById('data-table')?.scrollIntoView({ behavior: 'smooth' });
             }}
-            className="flex items-center px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+            className="flex items-center px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all shadow-sm hover:shadow-md active:scale-95"
           >
-            <FileText className="w-4 h-4 mr-2" />
-            顯示歷史資料
+            <FileText className="w-4 h-4 mr-2 text-gray-500" />
+            歷史資料
           </button>
           <button
             onClick={fetchGatewayData}
-            className="flex items-center px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+            className="flex items-center px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all shadow-sm hover:shadow-md active:scale-95"
           >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            擷取資料按鈕1
+            <RefreshCw className="w-4 h-4 mr-2 text-gray-500" />
+            模擬數據
           </button>
           <button
             onClick={exportToCSV}
-            className="flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
+            className="flex items-center px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all shadow-sm hover:shadow-md active:scale-95"
           >
             <Download className="w-4 h-4 mr-2" />
-            匯出歷史資料 (.csv)
+            匯出 CSV
           </button>
           <button
             onClick={analyzeDashboard}
             disabled={analyzing}
-            className={`flex items-center px-4 py-2 rounded-lg transition-colors shadow-sm ${
+            className={`flex items-center px-5 py-2.5 rounded-xl transition-all shadow-sm hover:shadow-lg active:scale-95 ${
               analyzing 
                 ? 'bg-indigo-400 text-white cursor-not-allowed' 
-                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700'
             }`}
           >
             {analyzing ? (
@@ -362,308 +367,347 @@ export default function Overview() {
             {analyzing ? 'AI 分析中...' : 'AI 智能分析'}
           </button>
         </div>
-      </div>
+      </motion.div>
 
-      {connectionError && (
-        <div className="mb-8 bg-red-50 border border-red-200 rounded-xl p-4 flex items-start shadow-sm">
-          <ServerCrash className="w-5 h-5 text-red-500 mr-3 mt-0.5 flex-shrink-0" />
-          <div>
-            <h3 className="text-sm font-semibold text-red-800">系統連線異常</h3>
-            <p className="text-sm text-red-600 mt-1">{connectionError}</p>
-            <ul className="mt-2 text-sm text-red-700 list-disc list-inside">
-              <li>請檢查您的網路連線是否正常。</li>
-              <li>確認後端伺服器 (API/WebSocket) 是否正在運行。</li>
-              <li>若持續發生，請聯絡系統管理員。</li>
-            </ul>
-          </div>
-        </div>
-      )}
-
-      {aiError && (
-        <div className="mb-8 bg-orange-50 border border-orange-200 rounded-xl p-6 relative shadow-sm">
-          <button 
-            onClick={() => setAiError(null)}
-            className="absolute top-4 right-4 text-orange-400 hover:text-orange-600 transition-colors"
+      <AnimatePresence>
+        {analysisResult && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="bg-gradient-to-br from-indigo-50 via-white to-violet-50 border border-indigo-100 rounded-2xl p-8 relative shadow-xl overflow-hidden group"
           >
-            <X className="w-5 h-5" />
-          </button>
-          <div className="flex items-start">
-            <div className="bg-orange-100 p-2 rounded-lg mr-4 mt-1">
-              <AlertTriangle className="w-6 h-6 text-orange-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-orange-900 mb-2">AI 分析失敗</h3>
-              <p className="text-orange-800 text-sm mb-3">
-                在產生分析報告時發生錯誤：<span className="font-mono bg-orange-100 px-1 py-0.5 rounded">{aiError}</span>
-              </p>
-              <div className="bg-white/60 rounded-lg p-4 border border-orange-100">
-                <h4 className="text-sm font-semibold text-orange-900 mb-2">疑難排解建議：</h4>
-                <ul className="text-sm text-orange-800 space-y-1 list-disc list-inside">
-                  <li>確認環境變數 <code className="bg-orange-100 px-1 rounded">GEMINI_API_KEY</code> 是否已正確設定。</li>
-                  <li>檢查瀏覽器控制台 (Console) 是否有跨域 (CORS) 或網路連線錯誤。</li>
-                  <li>稍後再試，可能是 AI 服務暫時無法連線或達到請求限制 (Rate Limit)。</li>
-                </ul>
+            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-200/20 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-indigo-300/30 transition-colors duration-700"></div>
+            <button 
+              onClick={() => setAnalysisResult(null)}
+              className="absolute top-6 right-6 p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-100 rounded-full transition-all z-10"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex items-start relative z-10">
+              <div className="bg-gradient-to-br from-indigo-500 to-violet-600 p-3 rounded-2xl mr-6 shadow-lg shadow-indigo-200">
+                <Sparkles className="w-7 h-7 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-2xl font-bold text-indigo-950 mb-4">AI 智能分析報告</h3>
+                <div className="prose prose-indigo prose-lg max-w-none text-indigo-900/80 markdown-body leading-relaxed">
+                  <ReactMarkdown>{analysisResult.markdownReport}</ReactMarkdown>
+                </div>
+                
+                {analysisResult.hasChart && analysisResult.chartData && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="bg-white/80 backdrop-blur-sm p-8 rounded-2xl border border-indigo-100 shadow-xl mt-8"
+                  >
+                    <h4 className="text-lg font-bold text-gray-900 mb-6 flex items-center">
+                      <TrendingUp className="w-5 h-5 mr-2 text-indigo-600" />
+                      {analysisResult.chartData.title}
+                    </h4>
+                    <div className="h-72 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        {analysisResult.chartData.type === 'bar' ? (
+                          <BarChart data={analysisResult.chartData.dataPoints} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                            <XAxis dataKey="label" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                            <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                            <Tooltip 
+                              cursor={{ fill: '#f8fafc' }}
+                              contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)", padding: "12px" }} 
+                            />
+                            <Legend wrapperStyle={{ paddingTop: "20px" }} />
+                            <Bar dataKey="value" name={analysisResult.chartData.seriesNames[0] || "Value"} fill="#6366f1" radius={[6, 6, 0, 0]} barSize={40} />
+                            {analysisResult.chartData.seriesNames.length > 1 && (
+                              <Bar dataKey="secondaryValue" name={analysisResult.chartData.seriesNames[1]} fill="#a5b4fc" radius={[6, 6, 0, 0]} barSize={40} />
+                            )}
+                          </BarChart>
+                        ) : (
+                          <LineChart data={analysisResult.chartData.dataPoints} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                            <XAxis dataKey="label" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                            <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                            <Tooltip contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)", padding: "12px" }} />
+                            <Legend wrapperStyle={{ paddingTop: "20px" }} />
+                            <Line type="monotone" dataKey="value" name={analysisResult.chartData.seriesNames[0] || "Value"} stroke="#6366f1" strokeWidth={4} dot={{ r: 5, fill: '#6366f1', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8, strokeWidth: 0 }} />
+                            {analysisResult.chartData.seriesNames.length > 1 && (
+                              <Line type="monotone" dataKey="secondaryValue" name={analysisResult.chartData.seriesNames[1]} stroke="#a5b4fc" strokeWidth={4} dot={{ r: 5, fill: '#a5b4fc', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8, strokeWidth: 0 }} />
+                            )}
+                          </LineChart>
+                        )}
+                      </ResponsiveContainer>
+                    </div>
+                  </motion.div>
+                )}
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {analysisResult && (
-        <div className="mb-8 bg-indigo-50 border border-indigo-100 rounded-xl p-6 relative shadow-sm">
-          <button 
-            onClick={() => setAnalysisResult(null)}
-            className="absolute top-4 right-4 text-indigo-400 hover:text-indigo-600 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          <div className="flex items-start">
-            <div className="bg-indigo-100 p-2 rounded-lg mr-4 mt-1">
-              <Sparkles className="w-6 h-6 text-indigo-600" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-indigo-900 mb-2">AI 智能分析報告</h3>
-              <div className="prose prose-indigo prose-sm max-w-none text-indigo-800 markdown-body">
-                <ReactMarkdown>{analysisResult.markdownReport}</ReactMarkdown>
+      <div ref={dashboardRef} className="space-y-8">
+        {/* KPIs */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { 
+              label: "當前發電功率", 
+              value: `${kpi.current_power.toFixed(2)} kW`, 
+              icon: Zap, 
+              color: "orange",
+              bg: "bg-orange-50",
+              text: "text-orange-600",
+              border: "border-orange-100",
+              shadow: "shadow-orange-100"
+            },
+            { 
+              label: "今日發電量", 
+              value: `${kpi.today_energy.toFixed(2)} kWh`, 
+              icon: Battery, 
+              color: "blue",
+              bg: "bg-blue-50",
+              text: "text-blue-600",
+              border: "border-blue-100",
+              shadow: "shadow-blue-100"
+            },
+            { 
+              label: "系統健康度", 
+              value: kpi.active_collectors > 0 ? "良好" : "待機", 
+              icon: ShieldCheck, 
+              color: "emerald",
+              bg: "bg-emerald-50",
+              text: "text-emerald-600",
+              border: "border-emerald-100",
+              shadow: "shadow-emerald-100"
+            },
+            { 
+              label: "雲端連線狀態", 
+              value: "EMQX 在線", 
+              icon: Wifi, 
+              color: "indigo",
+              bg: "bg-indigo-50",
+              text: "text-indigo-600",
+              border: "border-indigo-100",
+              shadow: "shadow-indigo-100",
+              isLive: true
+            }
+          ].map((item, idx) => (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.1 }}
+              whileHover={{ y: -5, scale: 1.02 }}
+              className={`bg-white rounded-3xl p-6 shadow-lg ${item.shadow} border ${item.border} flex items-center transition-all duration-300 group cursor-default`}
+            >
+              <div className={`w-14 h-14 rounded-2xl ${item.bg} flex items-center justify-center mr-5 group-hover:scale-110 transition-transform duration-300 shadow-inner`}>
+                <item.icon className={`w-7 h-7 ${item.text}`} />
               </div>
-              
-              {analysisResult.hasChart && analysisResult.chartData && (
-                <div className="bg-white p-6 rounded-xl border border-indigo-100 shadow-sm mt-6">
-                  <h4 className="text-md font-semibold text-gray-800 mb-4 text-center">{analysisResult.chartData.title}</h4>
-                  <div className="h-64 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      {analysisResult.chartData.type === 'bar' ? (
-                        <BarChart data={analysisResult.chartData.dataPoints} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                          <XAxis dataKey="label" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
-                          <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
-                          <Tooltip contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} />
-                          <Legend />
-                          <Bar dataKey="value" name={analysisResult.chartData.seriesNames[0] || "Value"} fill="#6366f1" radius={[4, 4, 0, 0]} />
-                          {analysisResult.chartData.seriesNames.length > 1 && (
-                            <Bar dataKey="secondaryValue" name={analysisResult.chartData.seriesNames[1]} fill="#a5b4fc" radius={[4, 4, 0, 0]} />
-                          )}
-                        </BarChart>
-                      ) : (
-                        <LineChart data={analysisResult.chartData.dataPoints} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                          <XAxis dataKey="label" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
-                          <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
-                          <Tooltip contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} />
-                          <Legend />
-                          <Line type="monotone" dataKey="value" name={analysisResult.chartData.seriesNames[0] || "Value"} stroke="#6366f1" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                          {analysisResult.chartData.seriesNames.length > 1 && (
-                            <Line type="monotone" dataKey="secondaryValue" name={analysisResult.chartData.seriesNames[1]} stroke="#a5b4fc" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                          )}
-                        </LineChart>
-                      )}
-                    </ResponsiveContainer>
+              <div>
+                <p className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-1">{item.label}</p>
+                <div className="flex items-center">
+                  {item.isLive && (
+                    <span className="relative flex h-3 w-3 mr-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                    </span>
+                  )}
+                  <h3 className="text-2xl font-black text-gray-900 tracking-tight">{item.value}</h3>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Chart */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="bg-white rounded-[2rem] p-8 shadow-xl shadow-gray-100 border border-gray-100 overflow-hidden relative group"
+        >
+          <div className="absolute top-0 right-0 w-96 h-96 bg-orange-50/50 rounded-full -mr-48 -mt-48 blur-3xl group-hover:bg-orange-100/50 transition-colors duration-700"></div>
+          
+          <div className="relative z-10">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+              <div className="flex items-center">
+                <div className="w-1.5 h-8 bg-orange-500 rounded-full mr-4"></div>
+                <h2 className="text-2xl font-bold text-gray-900">發電功率即時趨勢</h2>
+              </div>
+              <div className="flex space-x-1 bg-gray-100/80 backdrop-blur-sm p-1.5 rounded-2xl border border-gray-200">
+                {['24h', '7d', '30d'].map((range) => (
+                  <button
+                    key={range}
+                    onClick={() => setTimeRange(range)}
+                    className={`px-5 py-2 text-sm font-bold rounded-xl transition-all ${
+                      timeRange === range 
+                        ? 'bg-white text-gray-900 shadow-md' 
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'
+                    }`}
+                  >
+                    {range === '24h' ? '24小時' : range === '7d' ? '7天' : '30天'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            <div className="h-[400px] w-full">
+              {powerCurve.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={powerCurve} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorPower" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f97316" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="timestamp"
+                      tickFormatter={formatTime}
+                      stroke="#94a3b8"
+                      fontSize={12}
+                      fontWeight={600}
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={40}
+                      dy={10}
+                    />
+                    <YAxis 
+                      stroke="#94a3b8" 
+                      fontSize={12} 
+                      fontWeight={600}
+                      tickLine={false} 
+                      axisLine={false}
+                      dx={-10}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Area
+                      type="monotone"
+                      dataKey="total_power"
+                      name="總功率 (kW)"
+                      stroke="#f97316"
+                      strokeWidth={4}
+                      fillOpacity={1}
+                      fill="url(#colorPower)"
+                      animationDuration={2000}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4">
+                  <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center">
+                    <Activity className="w-8 h-8 text-gray-200" />
                   </div>
+                  <p className="font-medium">暫無發電數據</p>
                 </div>
               )}
             </div>
           </div>
-        </div>
-      )}
-
-      <div ref={dashboardRef} className="space-y-8 p-2 rounded-xl -m-2">
-        {/* KPIs */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 flex items-center">
-            <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center mr-4">
-              <Zap className="w-6 h-6 text-orange-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500 mb-1">當前發電功率 (kW)</p>
-              <h3 className="text-3xl font-bold text-gray-900">{kpi.current_power.toFixed(2)}</h3>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 flex items-center">
-            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mr-4">
-              <Battery className="w-6 h-6 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500 mb-1">今日發電量 (kWh)</p>
-              <h3 className="text-3xl font-bold text-gray-900">{kpi.today_energy.toFixed(2)}</h3>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 flex items-center">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mr-4">
-              <Activity className="w-6 h-6 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500 mb-1">系統狀態</p>
-              <h3 className="text-3xl font-bold text-gray-900">
-                {kpi.active_collectors > 0 ? "運行中" : "無設備"}
-              </h3>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 flex items-center">
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center mr-4 ${connectionError ? 'bg-red-100' : 'bg-blue-100'}`}>
-              <Wifi className={`w-6 h-6 ${connectionError ? 'text-red-600' : 'text-blue-600'}`} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500 mb-1">系統連線狀態</p>
-              <div className="flex items-center">
-                <span className="relative flex h-3 w-3 mr-2">
-                  {!connectionError && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
-                  <span className={`relative inline-flex rounded-full h-3 w-3 ${connectionError ? 'bg-red-500' : 'bg-emerald-500'}`}></span>
-                </span>
-                <h3 className={`text-xl font-bold ${connectionError ? 'text-red-600' : 'text-gray-900'}`}>
-                  {connectionError ? '連線中斷' : '已連線 (正常)'}
-                </h3>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Chart */}
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-semibold text-gray-800">發電功率曲線</h2>
-            <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg">
-              <button
-                onClick={() => setTimeRange('24h')}
-                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${timeRange === '24h' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                24小時
-              </button>
-              <button
-                onClick={() => setTimeRange('7d')}
-                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${timeRange === '7d' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                7天
-              </button>
-              <button
-                onClick={() => setTimeRange('30d')}
-                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${timeRange === '30d' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                30天
-              </button>
-            </div>
-          </div>
-          <div className="h-80 w-full">
-            {powerCurve.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={powerCurve} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorPower" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis
-                    dataKey="timestamp"
-                    tickFormatter={formatTime}
-                    stroke="#9ca3af"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    minTickGap={30}
-                  />
-                  <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Area
-                    type="monotone"
-                    dataKey="total_power"
-                    name="總功率 (kW)"
-                    stroke="#f97316"
-                    strokeWidth={3}
-                    fillOpacity={1}
-                    fill="url(#colorPower)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-gray-400">
-                暫無發電數據
-              </div>
-            )}
-          </div>
-        </div>
+        </motion.div>
 
         {/* Data Table */}
-        <div id="data-table" className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-            <h2 className="text-lg font-semibold text-gray-800">歷史接收數據</h2>
+        <motion.div 
+          id="data-table"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+          className="bg-white rounded-[2rem] shadow-xl shadow-gray-100 border border-gray-100 overflow-hidden"
+        >
+          <div className="px-8 py-6 border-b border-gray-100 bg-gray-50/30 flex justify-between items-center">
+            <h2 className="text-xl font-bold text-gray-900">歷史接收數據日誌</h2>
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest bg-white px-3 py-1 rounded-full border border-gray-200">
+              {telemetry.length} 筆紀錄
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-gray-600">
-              <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-semibold">
+              <thead className="bg-gray-50/50 text-gray-400 uppercase text-[10px] font-black tracking-[0.2em]">
                 <tr>
-                  <th className="px-6 py-4">時間</th>
-                  <th className="px-6 py-4">設備名稱</th>
-                  <th className="px-6 py-4">
-                    <div className="flex items-center">
-                      <Factory className="w-4 h-4 mr-1" /> 廠房 / <MapPin className="w-4 h-4 ml-1 mr-1" /> 地點
-                    </div>
-                  </th>
-                  <th className="px-6 py-4">功率 (kW)</th>
-                  <th className="px-6 py-4">溫度 (°C)</th>
-                  <th className="px-6 py-4">狀態</th>
+                  <th className="px-8 py-5">時間</th>
+                  <th className="px-8 py-5">設備名稱</th>
+                  <th className="px-8 py-5">廠房 / 地點</th>
+                  <th className="px-8 py-5">功率 (kW)</th>
+                  <th className="px-8 py-5">溫度 (°C)</th>
+                  <th className="px-8 py-5">狀態</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-50">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-400">
-                      載入中...
+                    <td colSpan={6} className="px-8 py-16 text-center">
+                      <div className="flex flex-col items-center space-y-3">
+                        <RefreshCw className="w-8 h-8 text-indigo-200 animate-spin" />
+                        <p className="text-gray-400 font-medium">數據載入中...</p>
+                      </div>
                     </td>
                   </tr>
                 ) : telemetry.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-400">
-                      尚無數據，請點擊右上角「模擬接收數據」
+                    <td colSpan={6} className="px-8 py-16 text-center">
+                      <div className="flex flex-col items-center space-y-3">
+                        <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center">
+                          <Download className="w-6 h-6 text-gray-200" />
+                        </div>
+                        <p className="text-gray-400 font-medium">尚無數據，請點擊右上角「模擬數據」</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
-                  telemetry.map((row) => (
-                    <tr key={row.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">
+                  telemetry.map((row, idx) => (
+                    <motion.tr 
+                      key={row.id} 
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.1 + (idx * 0.02), duration: 0.3 }}
+                      className="hover:bg-indigo-50/30 transition-colors group"
+                    >
+                      <td className="px-8 py-5 whitespace-nowrap font-mono text-xs text-gray-400 group-hover:text-indigo-600 transition-colors">
                         {formatDate(row.timestamp)}
                       </td>
-                      <td className="px-6 py-4 font-medium text-gray-900">
-                        {row.collector_name || <span className="text-gray-400 italic">未註冊設備 ({row.device_id})</span>}
+                      <td className="px-8 py-5">
+                        <div className="font-bold text-gray-900 group-hover:text-indigo-700 transition-colors">
+                          {row.collector_name || <span className="text-gray-300 font-normal italic">未註冊 ({row.device_id})</span>}
+                        </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-8 py-5">
                         <div className="flex flex-col space-y-1">
                           {row.plant && (
-                            <span className="flex items-center text-xs text-gray-600">
-                              <Factory className="w-3 h-3 mr-1" /> {row.plant}
+                            <span className="flex items-center text-xs font-bold text-gray-600">
+                              <Factory className="w-3 h-3 mr-1.5 text-gray-400" /> {row.plant}
                             </span>
                           )}
                           {row.location && (
-                            <span className="flex items-center text-xs text-gray-500">
-                              <MapPin className="w-3 h-3 mr-1" /> {row.location}
+                            <span className="flex items-center text-xs font-medium text-gray-400">
+                              <MapPin className="w-3 h-3 mr-1.5" /> {row.location}
                             </span>
                           )}
-                          {!row.plant && !row.location && <span className="text-gray-400">-</span>}
+                          {!row.plant && !row.location && <span className="text-gray-300">-</span>}
                         </div>
                       </td>
-                      <td className="px-6 py-4 font-mono font-medium text-orange-600">
-                        {row.power_kw.toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 font-mono">{row.temperature.toFixed(1)}</td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                            row.status === "Normal"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-red-100 text-red-700"
-                          }`}
-                        >
-                          {row.status}
+                      <td className="px-8 py-5">
+                        <span className="font-mono font-black text-lg text-orange-600">
+                          {row.power_kw.toFixed(2)}
                         </span>
                       </td>
-                    </tr>
+                      <td className="px-8 py-5 font-mono font-bold text-gray-500">{row.temperature.toFixed(1)}</td>
+                      <td className="px-8 py-5">
+                        <span
+                          className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm ${
+                            row.status === "Normal"
+                              ? "bg-emerald-500 text-white shadow-emerald-100"
+                              : "bg-red-500 text-white shadow-red-100"
+                          }`}
+                        >
+                          {row.status === "Normal" ? "運作正常" : "異常"}
+                        </span>
+                      </td>
+                    </motion.tr>
                   ))
                 )}
               </tbody>
             </table>
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>
   );
