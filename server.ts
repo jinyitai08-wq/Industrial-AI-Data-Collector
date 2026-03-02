@@ -422,8 +422,17 @@ async function startServer() {
   app.post("/api/gemini", async (req, res) => {
     try {
       const { base64Image } = req.body;
-      if (!base64Image) {
-        return sendError(res, "Missing base64Image", "MISSING_IMAGE", 400);
+      if (!base64Image || typeof base64Image !== 'string') {
+        return sendError(res, "Missing or invalid base64Image", "MISSING_IMAGE", 400);
+      }
+
+      // Extract raw base64 data if it's a data URI
+      const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
+
+      // Validate base64 format
+      const base64Regex = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+      if (!base64Regex.test(base64Data)) {
+        return sendError(res, "Invalid base64 image data", "INVALID_BASE64", 400);
       }
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -434,7 +443,7 @@ async function startServer() {
             {
               inlineData: {
                 mimeType: "image/jpeg",
-                data: base64Image,
+                data: base64Data,
               },
             },
             {
