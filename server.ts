@@ -148,13 +148,32 @@ async function startServer() {
       
       const startTimeStr = startTime.toISOString();
       
-      const rows = db.prepare(`
+      let query = `
         SELECT timestamp, SUM(power_kw) as total_power, SUM(daily_energy_kwh) as daily_energy_kwh, GROUP_CONCAT(status) as statuses
         FROM telemetry 
         WHERE timestamp >= ?
         GROUP BY timestamp
         ORDER BY timestamp DESC
-      `).all(startTimeStr);
+      `;
+
+      if (range === '7d' || range === '30d') {
+        query = `
+          SELECT strftime('%Y-%m-%d %H:00:00', timestamp) as timestamp, 
+                 AVG(total_power) as total_power, 
+                 AVG(daily_energy_kwh) as daily_energy_kwh,
+                 GROUP_CONCAT(statuses) as statuses
+          FROM (
+            SELECT timestamp, SUM(power_kw) as total_power, SUM(daily_energy_kwh) as daily_energy_kwh, GROUP_CONCAT(status) as statuses
+            FROM telemetry 
+            WHERE timestamp >= ?
+            GROUP BY timestamp
+          )
+          GROUP BY timestamp
+          ORDER BY timestamp DESC
+        `;
+      }
+
+      const rows = db.prepare(query).all(startTimeStr);
       
       const processedRows = rows.map((row: any) => {
         let overallStatus = '正常';
