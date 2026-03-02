@@ -4,7 +4,6 @@ import { Zap, Battery, Activity, RefreshCw, MapPin, Factory, Wifi, Download, Fil
 import { format } from "date-fns";
 import html2canvas from "html2canvas";
 import ReactMarkdown from "react-markdown";
-import { GoogleGenAI, Type } from "@google/genai";
 import { motion, AnimatePresence } from "motion/react";
 
 interface AIChartData {
@@ -214,78 +213,20 @@ export default function Overview() {
       const canvas = await html2canvas(dashboardRef.current, { scale: 1.5 });
       const base64Image = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
       
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: "image/jpeg",
-                data: base64Image,
-              },
-            },
-            {
-              text: "這是一個太陽能發電監控儀表板。請根據畫面上的數據（包含當前功率、今日發電量、設備狀態、發電曲線等），提供繁體中文分析與營運建議。如果發現任何趨勢或值得注意的數據點，請提供一組圖表數據來視覺化這些發現（例如：預測趨勢、異常對比等）。",
-            },
-          ],
+      const response = await fetch("/api/gemini", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              markdownReport: {
-                type: Type.STRING,
-                description: "使用 Markdown 格式排版的分析報告與營運建議",
-              },
-              hasChart: {
-                type: Type.BOOLEAN,
-                description: "是否有圖表數據",
-              },
-              chartData: {
-                type: Type.OBJECT,
-                description: "圖表數據（如果有的話）",
-                properties: {
-                  title: { type: Type.STRING, description: "圖表標題" },
-                  type: { type: Type.STRING, description: "圖表類型，'line' 或 'bar'" },
-                  xAxisName: { type: Type.STRING, description: "X 軸名稱" },
-                  yAxisName: { type: Type.STRING, description: "Y 軸名稱" },
-                  dataPoints: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        label: { type: Type.STRING, description: "X 軸標籤" },
-                        value: { type: Type.NUMBER, description: "主要數值" },
-                        secondaryValue: { type: Type.NUMBER, description: "次要數值 (選填)" }
-                      },
-                      required: ["label", "value"]
-                    }
-                  },
-                  seriesNames: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                    description: "數值系列的名稱，例如 ['預測發電量', '實際發電量']"
-                  }
-                },
-                required: ["title", "type", "xAxisName", "yAxisName", "dataPoints", "seriesNames"]
-              }
-            },
-            required: ["markdownReport", "hasChart"]
-          }
-        }
+        body: JSON.stringify({ base64Image }),
       });
-      
-      if (response.text) {
-        try {
-          setAnalysisResult(JSON.parse(response.text));
-        } catch (e) {
-          setAnalysisResult({ markdownReport: response.text, hasChart: false });
-        }
-      } else {
-        setAnalysisResult({ markdownReport: "無法產生分析結果。", hasChart: false });
+
+      if (!response.ok) {
+        throw new Error("API request failed");
       }
+
+      const data = await response.json();
+      setAnalysisResult(data);
     } catch (err) {
       console.error("AI Analysis failed:", err);
       setAnalysisResult({ markdownReport: "AI 分析過程中發生錯誤，請稍後再試。", hasChart: false });
