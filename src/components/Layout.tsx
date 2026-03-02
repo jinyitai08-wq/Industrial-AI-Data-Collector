@@ -10,8 +10,12 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
-  Sun
+  Sun,
+  LogIn,
+  LogOut,
+  User
 } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 const menuStructure = [
   {
@@ -97,6 +101,7 @@ const menuStructure = [
 
 export default function Layout() {
   const location = useLocation();
+  const { user, loading, login, logout } = useAuth();
   
   // Find which menu section is active based on current path
   const getActiveSection = () => {
@@ -173,6 +178,45 @@ export default function Layout() {
             })}
           </ul>
         </nav>
+
+        {/* User Profile / Login Section */}
+        <div className="mt-auto p-4 bg-[#152433] border-t border-gray-700">
+          {loading ? (
+            <div className="flex items-center justify-center py-2">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+            </div>
+          ) : user ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <img 
+                  src={user.picture} 
+                  alt={user.name} 
+                  className="w-10 h-10 rounded-full border-2 border-[#4a90e2]"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-sm font-medium truncate">{user.name}</span>
+                  <span className="text-xs text-gray-400 truncate">{user.email}</span>
+                </div>
+              </div>
+              <button 
+                onClick={logout}
+                className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                title="登出"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={login}
+              className="w-full flex items-center justify-center space-x-2 py-2 px-4 bg-[#4a90e2] hover:bg-[#357abd] text-white rounded-lg transition-colors font-medium"
+            >
+              <LogIn className="w-5 h-5" />
+              <span>Google 登入</span>
+            </button>
+          )}
+        </div>
       </aside>
 
       {/* Main Content */}

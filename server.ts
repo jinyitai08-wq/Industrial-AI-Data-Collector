@@ -3,6 +3,9 @@ import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import http from "http";
 import { GoogleGenAI, Type } from "@google/genai";
+import cookieParser from "cookie-parser";
+import { OAuth2Client } from "google-auth-library";
+import jwt from "jsonwebtoken";
 
 // Vite middleware setup
 async function startServer() {
@@ -11,6 +14,13 @@ async function startServer() {
   const PORT = process.env.PORT || 3000;
 
   app.use(express.json({ limit: "50mb" }));
+  app.use(cookieParser());
+
+  const JWT_SECRET = process.env.JWT_SECRET || "super-secret-solar-key";
+  const googleClient = new OAuth2Client(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  );
 
   // Helper for unified error responses
   const sendError = (res: express.Response, message: string, code: string = "INTERNAL_ERROR", status: number = 500) => {
@@ -94,6 +104,98 @@ async function startServer() {
     } catch (error: any) {
       sendError(res, "Health check failed", "HEALTH_CHECK_FAILED");
     }
+  });
+
+  // --- Auth APIs ---
+  app.get("/api/auth/google/url", (req, res) => {
+    try {
+      const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+      const url = googleClient.generateAuthUrl({
+        access_type: "offline",
+        scope: ["https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email"],
+        redirect_uri: redirectUri,
+      });
+      res.json({ url });
+    } catch (error: any) {
+      sendError(res, "Failed to generate auth URL", "AUTH_URL_ERROR");
+    }
+  });
+
+  app.get("/api/auth/google/callback", async (req, res) => {
+    try {
+      const { code } = req.query;
+      if (!code) return res.status(400).send("Missing code");
+
+      const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+      const { tokens } = await googleClient.getToken({
+        code: code as string,
+        redirect_uri: redirectUri,
+      });
+
+      const ticket = await googleClient.verifyIdToken({
+        idToken: tokens.id_token!,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+
+      const payload = ticket.getPayload();
+      if (!payload) throw new Error("Invalid token payload");
+
+      const user = {
+        id: payload.sub,
+        email: payload.email,
+        name: payload.name,
+        picture: payload.picture,
+      };
+
+      const sessionToken = jwt.sign(user, JWT_SECRET, { expiresIn: "7d" });
+
+      res.cookie("session", sessionToken, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      res.send(`
+        <html>
+          <body>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
+                window.close();
+              } else {
+                window.location.href = '/';
+              }
+            </script>
+            <p>驗證成功，正在關閉視窗...</p>
+          </body>
+        </html>
+      `);
+    } catch (error: any) {
+      console.error("Auth callback error:", error);
+      res.status(500).send("Authentication failed");
+    }
+  });
+
+  app.get("/api/auth/me", (req, res) => {
+    try {
+      const token = req.cookies.session;
+      if (!token) return res.json({ user: null });
+
+      const user = jwt.verify(token, JWT_SECRET);
+      res.json({ user });
+    } catch (error) {
+      res.json({ user: null });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    res.clearCookie("session", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+    });
+    res.json({ success: true });
   });
 
   // --- Collector APIs ---
