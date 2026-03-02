@@ -1,7 +1,8 @@
 node_modules
 dist
-.env
 .git
-.DS_Store
-plant_monitor.db
+.env
+*.log
 plant_monitor.db-journal
+plant_monitor.db-shm
+plant_monitor.db-wal

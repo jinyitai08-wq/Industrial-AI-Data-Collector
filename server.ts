@@ -12,6 +12,17 @@ async function startServer() {
 
   app.use(express.json({ limit: "50mb" }));
 
+  // Helper for unified error responses
+  const sendError = (res: express.Response, message: string, code: string = "INTERNAL_ERROR", status: number = 500) => {
+    res.status(status).json({
+      error: {
+        message,
+        code,
+        timestamp: new Date().toISOString()
+      }
+    });
+  };
+
   // Initialize SQLite database
   const db = new Database("plant_monitor.db");
   
@@ -78,7 +89,11 @@ async function startServer() {
   }
 
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+    try {
+      res.json({ status: "ok" });
+    } catch (error: any) {
+      sendError(res, "Health check failed", "HEALTH_CHECK_FAILED");
+    }
   });
 
   // --- Collector APIs ---
@@ -86,24 +101,26 @@ async function startServer() {
     try {
       const rows = db.prepare("SELECT * FROM collectors ORDER BY created_at DESC").all();
       res.json(rows);
-    } catch (error) {
-      res.status(500).json({ error: "Internal Server Error" });
+    } catch (error: any) {
+      sendError(res, "Failed to fetch collectors", "FETCH_COLLECTORS_ERROR");
     }
   });
 
   app.post("/api/collectors", (req, res) => {
     try {
       const { name, device_id, description, location, plant } = req.body;
-      if (!name || !device_id) return res.status(400).json({ error: "Missing required fields" });
+      if (!name || !device_id) {
+        return sendError(res, "Missing required fields: name, device_id", "MISSING_FIELDS", 400);
+      }
       
       const stmt = db.prepare("INSERT INTO collectors (name, device_id, description, location, plant) VALUES (?, ?, ?, ?, ?)");
       const info = stmt.run(name, device_id, description || "", location || "", plant || "");
       res.json({ id: info.lastInsertRowid, name, device_id, description, location, plant });
     } catch (error: any) {
       if (error.message.includes("UNIQUE constraint failed")) {
-        return res.status(400).json({ error: "設備 ID 已存在" });
+        return sendError(res, "設備 ID 已存在", "DUPLICATE_DEVICE_ID", 400);
       }
-      res.status(500).json({ error: "Internal Server Error" });
+      sendError(res, "Failed to create collector", "CREATE_COLLECTOR_ERROR");
     }
   });
 
@@ -111,8 +128,8 @@ async function startServer() {
     try {
       db.prepare("DELETE FROM collectors WHERE id = ?").run(req.params.id);
       res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Internal Server Error" });
+    } catch (error: any) {
+      sendError(res, "Failed to delete collector", "DELETE_COLLECTOR_ERROR");
     }
   });
 
@@ -127,8 +144,8 @@ async function startServer() {
         ORDER BY t.timestamp DESC LIMIT ?
       `).all(limit);
       res.json(rows);
-    } catch (error) {
-      res.status(500).json({ error: "Internal Server Error" });
+    } catch (error: any) {
+      sendError(res, "Failed to fetch telemetry", "FETCH_TELEMETRY_ERROR");
     }
   });
 
@@ -197,8 +214,8 @@ async function startServer() {
       
       // Reverse to chronological order
       res.json(processedRows.reverse());
-    } catch (error) {
-      res.status(500).json({ error: "Internal Server Error" });
+    } catch (error: any) {
+      sendError(res, "Failed to fetch power curve", "FETCH_POWER_CURVE_ERROR");
     }
   });
 
@@ -220,8 +237,8 @@ async function startServer() {
         today_energy: latest?.today_energy || 0,
         active_collectors: collectorCount.count || 0
       });
-    } catch (error) {
-      res.status(500).json({ error: "Internal Server Error" });
+    } catch (error: any) {
+      sendError(res, "Failed to fetch KPIs", "FETCH_KPIS_ERROR");
     }
   });
 
@@ -253,8 +270,8 @@ async function startServer() {
       
       const rows = db.prepare(query).all(...params);
       res.json(rows);
-    } catch (error) {
-      res.status(500).json({ error: "Internal Server Error" });
+    } catch (error: any) {
+      sendError(res, "Failed to fetch history", "FETCH_HISTORY_ERROR");
     }
   });
 
@@ -262,8 +279,8 @@ async function startServer() {
     try {
       db.prepare("DELETE FROM telemetry").run();
       res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Internal Server Error" });
+    } catch (error: any) {
+      sendError(res, "Failed to clear telemetry", "CLEAR_TELEMETRY_ERROR");
     }
   });
 
@@ -272,7 +289,7 @@ async function startServer() {
     try {
       const envelope = req.body;
       if (!envelope || !envelope.message || !envelope.message.data) {
-        return res.status(400).send("Bad Request: Invalid Pub/Sub message format");
+        return sendError(res, "Bad Request: Invalid Pub/Sub message format", "INVALID_PUBSUB_FORMAT", 400);
       }
 
       const dataPayload = Buffer.from(envelope.message.data, "base64").toString("utf-8");
@@ -294,9 +311,9 @@ async function startServer() {
 
       console.log(`Processed PV data for ${deviceId}: power=${power}kW, status=${status}`);
       res.status(200).send("OK");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error processing message:", error);
-      res.status(500).send("Internal Server Error");
+      sendError(res, "Internal Server Error during push processing", "PUSH_PROCESSING_ERROR");
     }
   });
 
@@ -304,7 +321,7 @@ async function startServer() {
     try {
       const { base64Image } = req.body;
       if (!base64Image) {
-        return res.status(400).json({ error: "Missing base64Image" });
+        return sendError(res, "Missing base64Image", "MISSING_IMAGE", 400);
       }
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -379,9 +396,9 @@ async function startServer() {
       } else {
         res.json({ markdownReport: "無法產生分析結果。", hasChart: false });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Gemini API error:", error);
-      res.status(500).json({ error: "Internal Server Error" });
+      sendError(res, "Gemini analysis failed", "GEMINI_ERROR");
     }
   });
 
