@@ -49,7 +49,6 @@ interface PowerData {
   total_power: number;
   status?: string;
   daily_energy_kwh?: number;
-  avg_temp?: number;
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -61,59 +60,77 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         formattedDate = format(new Date(label), "yyyy-MM-dd HH:mm:ss");
       }
     } catch (e) {
-      // fallback
+      // fallback to original label
     }
     
     return (
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white/95 backdrop-blur-md p-5 rounded-2xl shadow-2xl border border-orange-100 min-w-[220px]"
-      >
-        <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-50">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{formattedDate}</p>
-          <div className={`w-2 h-2 rounded-full ${data.status === "異常" ? "bg-red-500 animate-pulse" : "bg-emerald-500"}`}></div>
+      <div className="bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-2xl border border-gray-100 min-w-[220px]">
+        <div className="flex items-center justify-between mb-3 border-b border-gray-50 pb-2">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{formattedDate}</p>
+          <Activity className="w-3.5 h-3.5 text-orange-500" />
         </div>
-        
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <Zap className="w-3.5 h-3.5 text-orange-500 mr-2" />
-              <span className="text-xs font-bold text-gray-500">當前功率</span>
+              <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center mr-3">
+                <Zap className="w-4 h-4 text-orange-500" />
+              </div>
+              <span className="text-sm font-medium text-gray-600">總功率</span>
             </div>
-            <span className="text-sm font-black text-gray-900">{data.total_power.toFixed(2)} <span className="text-[10px] text-gray-400">kW</span></span>
+            <span className="text-sm font-black text-gray-900">{data.total_power.toFixed(2)} <span className="text-[10px] text-gray-400 font-bold">kW</span></span>
           </div>
-
+          
           {data.daily_energy_kwh !== undefined && (
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <Battery className="w-3.5 h-3.5 text-blue-500 mr-2" />
-                <span className="text-xs font-bold text-gray-500">累積發電</span>
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center mr-3">
+                  <Battery className="w-4 h-4 text-blue-500" />
+                </div>
+                <span className="text-sm font-medium text-gray-600">今日發電量</span>
               </div>
-              <span className="text-sm font-black text-gray-900">{data.daily_energy_kwh.toFixed(2)} <span className="text-[10px] text-gray-400">kWh</span></span>
-            </div>
-          )}
-
-          {data.avg_temp !== undefined && (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <Activity className="w-3.5 h-3.5 text-indigo-500 mr-2" />
-                <span className="text-xs font-bold text-gray-500">平均溫度</span>
-              </div>
-              <span className="text-sm font-black text-gray-900">{data.avg_temp.toFixed(1)} <span className="text-[10px] text-gray-400">°C</span></span>
+              <span className="text-sm font-black text-gray-900">{data.daily_energy_kwh.toFixed(2)} <span className="text-[10px] text-gray-400 font-bold">kWh</span></span>
             </div>
           )}
           
-          <div className="pt-2 mt-2 border-t border-gray-50 flex items-center justify-between">
-            <span className="text-[10px] font-bold text-gray-400 uppercase">狀態</span>
-            <span className={`text-[10px] font-black uppercase tracking-wider ${
-              data.status === "異常" ? "text-red-500" : data.status === "發電中" ? "text-emerald-500" : "text-gray-400"
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">系統狀態</span>
+            <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider ${
+              data.status === "異常" || data.status === "Offline" 
+                ? "bg-red-50 text-red-600 border border-red-100" 
+                : data.status === "發電中" || data.status === "Normal"
+                  ? "bg-emerald-50 text-emerald-600 border border-emerald-100" 
+                  : "bg-gray-50 text-gray-500 border border-gray-100"
             }`}>
-              {data.status || "未知"}
+              {data.status === "Normal" ? "運作正常" : data.status === "Offline" ? "離線" : data.status || "未知"}
             </span>
           </div>
         </div>
-      </motion.div>
+      </div>
+    );
+  }
+  return null;
+};
+
+const CustomAITooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-2xl border border-indigo-100 min-w-[180px]">
+        <div className="flex items-center justify-between mb-3 border-b border-indigo-50 pb-2">
+          <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">{label}</p>
+          <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+        </div>
+        <div className="space-y-2.5">
+          {payload.map((entry: any, index: number) => (
+            <div key={index} className="flex items-center justify-between gap-4">
+              <div className="flex items-center">
+                <div className="w-2.5 h-2.5 rounded-full mr-2.5 shadow-sm" style={{ backgroundColor: entry.color }}></div>
+                <span className="text-sm font-medium text-gray-600">{entry.name}</span>
+              </div>
+              <span className="text-sm font-black text-gray-900">{entry.value.toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
   return null;
@@ -388,48 +405,13 @@ export default function Overview() {
                             <XAxis dataKey="label" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
                             <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
                             <Tooltip 
-                              cursor={{ stroke: '#6366f1', strokeWidth: 2, strokeDasharray: '5 5' }}
-                              content={({ active, payload, label }) => {
-                                if (active && payload && payload.length) {
-                                  return (
-                                    <div className="bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-indigo-100 min-w-[180px]">
-                                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 border-b border-gray-50 pb-2">{label}</p>
-                                      {payload.map((p: any, i: number) => (
-                                        <div key={i} className="flex items-center justify-between py-1">
-                                          <div className="flex items-center">
-                                            <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: p.color }}></div>
-                                            <span className="text-xs font-bold text-gray-500">{p.name}</span>
-                                          </div>
-                                          <span className="text-sm font-black text-gray-900 ml-4">{p.value.toFixed(2)}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              }}
+                              content={<CustomAITooltip />}
+                              cursor={{ fill: '#f8fafc' }}
                             />
                             <Legend wrapperStyle={{ paddingTop: "20px" }} />
-                            <Bar 
-                              dataKey="value" 
-                              name={analysisResult.chartData.seriesNames[0] || "Value"} 
-                              fill="#6366f1" 
-                              radius={[6, 6, 0, 0]} 
-                              barSize={40}
-                              animationDuration={1500}
-                              animationEasing="ease-out"
-                            />
+                            <Bar dataKey="value" name={analysisResult.chartData.seriesNames[0] || "Value"} fill="#6366f1" radius={[6, 6, 0, 0]} barSize={40} />
                             {analysisResult.chartData.seriesNames.length > 1 && (
-                              <Bar 
-                                dataKey="secondaryValue" 
-                                name={analysisResult.chartData.seriesNames[1]} 
-                                fill="#a5b4fc" 
-                                radius={[6, 6, 0, 0]} 
-                                barSize={40}
-                                animationDuration={1500}
-                                animationEasing="ease-out"
-                                animationBegin={300}
-                              />
+                              <Bar dataKey="secondaryValue" name={analysisResult.chartData.seriesNames[1]} fill="#a5b4fc" radius={[6, 6, 0, 0]} barSize={40} />
                             )}
                           </BarChart>
                         ) : (
@@ -437,53 +419,11 @@ export default function Overview() {
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                             <XAxis dataKey="label" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
                             <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
-                            <Tooltip 
-                              cursor={{ stroke: '#6366f1', strokeWidth: 2, strokeDasharray: '5 5' }}
-                              content={({ active, payload, label }) => {
-                                if (active && payload && payload.length) {
-                                  return (
-                                    <div className="bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-indigo-100 min-w-[180px]">
-                                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 border-b border-gray-50 pb-2">{label}</p>
-                                      {payload.map((p: any, i: number) => (
-                                        <div key={i} className="flex items-center justify-between py-1">
-                                          <div className="flex items-center">
-                                            <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: p.color }}></div>
-                                            <span className="text-xs font-bold text-gray-500">{p.name}</span>
-                                          </div>
-                                          <span className="text-sm font-black text-gray-900 ml-4">{p.value.toFixed(2)}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              }}
-                            />
+                            <Tooltip content={<CustomAITooltip />} />
                             <Legend wrapperStyle={{ paddingTop: "20px" }} />
-                            <Line 
-                              type="monotone" 
-                              dataKey="value" 
-                              name={analysisResult.chartData.seriesNames[0] || "Value"} 
-                              stroke="#6366f1" 
-                              strokeWidth={4} 
-                              dot={{ r: 5, fill: '#6366f1', strokeWidth: 2, stroke: '#fff' }} 
-                              activeDot={{ r: 8, strokeWidth: 0 }}
-                              animationDuration={1500}
-                              animationEasing="ease-out"
-                            />
+                            <Line type="monotone" dataKey="value" name={analysisResult.chartData.seriesNames[0] || "Value"} stroke="#6366f1" strokeWidth={4} dot={{ r: 5, fill: '#6366f1', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8, strokeWidth: 0 }} />
                             {analysisResult.chartData.seriesNames.length > 1 && (
-                              <Line 
-                                type="monotone" 
-                                dataKey="secondaryValue" 
-                                name={analysisResult.chartData.seriesNames[1]} 
-                                stroke="#a5b4fc" 
-                                strokeWidth={4} 
-                                dot={{ r: 5, fill: '#a5b4fc', strokeWidth: 2, stroke: '#fff' }} 
-                                activeDot={{ r: 8, strokeWidth: 0 }}
-                                animationDuration={1500}
-                                animationEasing="ease-out"
-                                animationBegin={300}
-                              />
+                              <Line type="monotone" dataKey="secondaryValue" name={analysisResult.chartData.seriesNames[1]} stroke="#a5b4fc" strokeWidth={4} dot={{ r: 5, fill: '#a5b4fc', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8, strokeWidth: 0 }} />
                             )}
                           </LineChart>
                         )}
@@ -632,7 +572,7 @@ export default function Overview() {
                       axisLine={false}
                       dx={-10}
                     />
-                    <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#f97316', strokeWidth: 2, strokeDasharray: '5 5' }} />
+                    <Tooltip content={<CustomTooltip />} />
                     <Area
                       type="monotone"
                       dataKey="total_power"
@@ -641,9 +581,7 @@ export default function Overview() {
                       strokeWidth={4}
                       fillOpacity={1}
                       fill="url(#colorPower)"
-                      animationDuration={2500}
-                      animationEasing="ease-in-out"
-                      isAnimationActive={true}
+                      animationDuration={2000}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
