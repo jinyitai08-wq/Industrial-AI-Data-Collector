@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, LineChart, Line, Legend } from "recharts";
 import { Zap, Battery, Activity, RefreshCw, MapPin, Factory, Wifi, Download, FileText, Sparkles, X, TrendingUp, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
-import html2canvas from "html2canvas";
+import { toJpeg } from "html-to-image";
 import ReactMarkdown from "react-markdown";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -261,8 +261,8 @@ export default function Overview() {
     setAnalyzing(true);
     setAnalysisResult(null);
     try {
-      const canvas = await html2canvas(dashboardRef.current, { scale: 1.5 });
-      const base64Image = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+      const dataUrl = await toJpeg(dashboardRef.current, { quality: 0.8, pixelRatio: 1.5 });
+      const base64Image = dataUrl.split(",")[1];
       
       const response = await fetch("/api/gemini", {
         method: "POST",
